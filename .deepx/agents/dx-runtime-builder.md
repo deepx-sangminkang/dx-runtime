@@ -165,6 +165,63 @@ When a task requires both dx_app and dx_stream:
    - Python import paths are correct for each sub-project's package structure.
 4. **Integration test** — if both components produce runnable code, verify they can interoperate.
 
+### Dual session.log Requirement (HARD GATE)
+
+For cross-project (multi-domain) scenarios — including the `runtime` scenario
+where a single agent invocation produces both dx_app and dx_stream artifacts —
+**each sub-project MUST receive its own authentic `session.log`**:
+
+```
+dx-runtime/dx_app/dx-agentic-dev/<sid>/session.log          ← captured by tee from dx_app commands
+dx-runtime/dx_stream/dx-agentic-dev/<sid>/session.log       ← captured by tee from dx_stream commands
+```
+
+**MANDATORY: each session.log MUST be the tee-captured stdout of real command
+execution** (e.g., `python yolo26n_sync.py ... 2>&1 | tee session.log`,
+`gst-launch-1.0 ... 2>&1 | tee session.log`).
+
+**PROHIBITED — heredoc-only writes that the analyzer will flag as fabricated**:
+
+```bash
+# ❌ WRONG — fabricated, will fail session_log_authentic check
+cat << 'EOF' > session.log
+[Inference Complete]
+Detected 3 objects
+EOF
+
+# ❌ WRONG — printf with embedded log content
+printf "Detection: car\n" > session.log
+
+# ❌ WRONG — Python-based templated write
+Path("session.log").write_text("Inference complete\n")
+```
+
+**CORRECT** — wrap the actual command and tee its output:
+
+```bash
+# ✓ dx_app sub-project's session.log
+cd dx-runtime/dx_app/dx-agentic-dev/<sid>
+python yolo26n_sync.py --model yolo26n.dxnn --image sample.jpg 2>&1 | tee session.log
+
+# ✓ dx_stream sub-project's session.log
+cd dx-runtime/dx_stream/dx-agentic-dev/<sid>
+bash run.sh 2>&1 | tee session.log
+```
+
+**Rationale**: the analyzer's `ExecutionTrace` rubric for `runtime` scenarios
+independently evaluates `dx_app_evidence` and `dx_stream_evidence` — a missing
+or fabricated session.log in either sub-project drops that sub-project's
+contribution by 35 points. The `session_log_authentic` compliance check
+(scenario-aware in v2) is soft-warning only for `runtime`, but the underlying
+ExecutionTrace rubric still penalizes missing real logs.
+
+**False-positive note for the analyzer**: heredoc writes whose target path is
+a DIFFERENT directory than the agent's own session.log (e.g., the runtime
+agent writing `cat << 'EOF' > dx-runtime/dx_app/.../session.log` from a
+top-level scratch directory) are now correctly classified as legitimate
+sub-project writes, not as fabrication. The detection only flags heredocs
+that target THIS dir's own session.log.
+
 ---
 
 ## Context Loading Order
