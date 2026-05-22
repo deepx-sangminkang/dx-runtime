@@ -23,6 +23,30 @@ It classifies the user's request into one of three categories and routes accordi
 
 ---
 
+## Session-ID Freshness (HARD GATE — READ FIRST)
+
+Each agent invocation MUST generate a fresh `SESSION_ID` from the current
+local clock. Reading prior-round state markers or reusing a pre-existing
+`dx-agentic-dev/<sid>/` directory is a HARD GATE violation (CLAUDE.md
+"Previous session reference PROHIBITED"). For the `runtime` cross-domain
+scenario each sub-project (`dx_app/`, `dx_stream/`) MUST get its OWN fresh
+session-id with the current timestamp.
+
+```bash
+# ✓ Always create fresh, per-sub-project session-ids each round:
+SID_BASE="$(date +%Y%m%d-%H%M%S)_<agent>_<coding_model>_<target>"
+APP_WORK="dx-runtime/dx_app/dx-agentic-dev/${SID_BASE}_detection"
+STREAM_WORK="dx-runtime/dx_stream/dx-agentic-dev/${SID_BASE}_stream"
+mkdir -p "${APP_WORK}" "${STREAM_WORK}"
+
+# ✗ NEVER read these stale state files — they leak prior session paths:
+#   .codex_current_work_dir  .cursor_current_session_id  .copilot_current_*
+#   .current_dx_*            .active_*                    .tmp_dx_workdir
+# ✗ NEVER skip a round by re-entering a prior dx-agentic-dev/<sid>/ dir.
+```
+
+---
+
 ## Step 0: Prerequisites Check (HARD GATE)
 
 Before classifying or routing any task, verify the dx-runtime environment.
