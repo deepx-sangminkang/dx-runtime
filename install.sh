@@ -33,6 +33,7 @@ show_help() {
     echo -e ""
     echo -e "  ${COLOR_GREEN}[--skip-uninstall]${COLOR_RESET}                 Skip uninstall dx-runtime modules before installation"
     echo -e "  ${COLOR_GREEN}[--driver-source-build]${COLOR_RESET}            Build NPU driver from source if set (default: install via DKMS)"
+    echo -e "  ${COLOR_GREEN}[--rt-source-build]${COLOR_RESET}                Build dx_rt from source if set (default: install via Debian package)"
     echo -e ""
     echo -e "  ${COLOR_GREEN}[--exclude-fw]${COLOR_RESET}                     Skip dx_fw installation (works with --all or --target)"
     echo -e "  ${COLOR_GREEN}[--exclude-driver]${COLOR_RESET}                 Skip dx_rt_npu_linux_driver installation (works with --all or --target)"
@@ -268,6 +269,18 @@ uninstall_dx_rt() {
     fi
 
     print_colored_v2 "INFO" "Uninstalling dx_rt..."
+
+    # Remove any dx_rt runtime installed via Debian package (libdxrt-bin, or the
+    # legacy source package libdxrt). The source uninstall.sh below only knows
+    # about source-built files, so a prior apt install would otherwise leave
+    # dpkg's database owning stale files.
+    for pkg in libdxrt-bin libdxrt; do
+        if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+            print_colored_v2 "INFO" "Removing Debian package: ${pkg}"
+            sudo apt-get remove -y "$pkg" || { print_colored_v2 "WARNING" "Failed to remove Debian package ${pkg}."; }
+        fi
+    done
+
     pushd "${RUNTIME_PATH}/dx_rt"
     if [ -f "uninstall.sh" ]; then
         ./uninstall.sh || { print_colored_v2 "WARNING" "dx_rt uninstall failed."; }
@@ -276,6 +289,62 @@ uninstall_dx_rt() {
     fi
     popd
     print_colored_v2 "SUCCESS" "Uninstalling dx_rt completed."
+}
+
+install_dx_rt_via_source_build() {
+    set_use_ort
+
+    . "${VENV_PATH}/bin/activate" || { print_colored_v2 "ERROR" "venv(${VENV_PATH}) activation failed. Exiting."; exit 1; }
+
+    pushd "$SCRIPT_DIR/dx_rt"
+    if [ "${USE_ORT}" = "y" ]; then
+        ./install.sh --all
+    else
+        ./install.sh --dep
+    fi || { print_colored_v2 "ERROR" "dx_rt install failed. Exiting."; exit 1; }
+
+    ./build.sh --clean || { print_colored_v2 "ERROR" "dx_rt install failed. Exiting."; exit 1; }
+    popd
+}
+
+install_dx_rt_via_debian() {
+    # release/latest ships arch-specific prebuilt binary packages
+    # (libdxrt-bin_<ver>_amd64.deb, libdxrt-bin_<ver>_arm64.deb). dpkg's arch
+    # name matches the .deb suffix exactly on Debian/Ubuntu (the only supported
+    # OSes), so use it to pick the right one. sort makes the pick deterministic
+    # when more than one candidate matches.
+    local deb_arch
+    deb_arch=$(dpkg --print-architecture 2>/dev/null)
+
+    local release_dir="${RT_PATH}/release/latest"
+    local deb_file
+    deb_file=$(find -L "${release_dir}" -maxdepth 1 -type f -name "libdxrt*_${deb_arch}.deb" | sort | head -1)
+    # Fall back to legacy arch-independent package (libdxrt_<ver>_all.deb).
+    if [ -z "$deb_file" ]; then
+        deb_file=$(find -L "${release_dir}" -maxdepth 1 -type f -name "libdxrt*_all.deb" | sort | head -1)
+    fi
+
+    # No package found (missing, or a dangling symlink that find -L skipped):
+    # hard-fail instead of silently degrading to a slow source build. The user
+    # asked for the Debian package; --rt-source-build is the explicit opt-in.
+    if [ -z "$deb_file" ]; then
+        print_colored_v2 "ERROR" "dx_rt Debian package not found for arch '${deb_arch}' under ${release_dir}."
+        print_colored_v2 "ERROR" "Use --rt-source-build to install dx_rt from source instead. Exiting."
+        exit 1
+    fi
+
+    local abs_deb_file
+    abs_deb_file=$(realpath "${deb_file}") || abs_deb_file="${deb_file}"
+
+    print_colored_v2 "INFO" "Installing dx_rt Debian package: ${abs_deb_file}"
+    # libdxrt-bin is a prebuilt binary package - no compiler toolchain required.
+    # apt-get install of a local .deb resolves its runtime Depends (libc6,
+    # libstdc++6, ...); the postinst runs ldconfig and installs the dx_engine
+    # Python wheel into the system python3.
+    sudo apt-get install -y "${abs_deb_file}" || {
+        print_colored_v2 "ERROR" "Failed to install dx_rt Debian package. Exiting."
+        exit 1
+    }
 }
 
 install_dx_rt() {
@@ -287,19 +356,18 @@ install_dx_rt() {
     uninstall_dx_rt
 
     DX_RT_INCLUDED=1
-    set_use_ort
 
-    . "${VENV_PATH}/bin/activate" || { print_colored_v2 "ERROR" "venv(${VENV_PATH}) activation failed. Exiting."; exit 1; }
-
-    pushd "$SCRIPT_DIR/dx_rt"
-    if [ "${USE_ORT}" = "y" ]; then
-        ./install.sh --all
+    if [ "${USE_RT_SOURCE_BUILD}" = "y" ]; then
+        install_dx_rt_via_source_build
     else
-        ./install.sh --dep
-    fi || { print_colored_v2 "ERROR" "dx_rt install failed. Exiting."; exit 1; }
-    
-    ./build.sh --clean || { print_colored_v2 "ERROR" "dx_rt install failed. Exiting."; exit 1; }
-    popd
+        # USE_ORT is baked into the prebuilt package; --use-ort only affects a
+        # source build. Warn when the user asked for a non-default value so the
+        # silently-ignored flag doesn't surprise them.
+        if [ "${USE_ORT}" != "y" ]; then
+            print_colored_v2 "WARNING" "--use-ort=${USE_ORT} is ignored for the Debian package install (ORT is fixed in the prebuilt package). Use --rt-source-build to control USE_ORT."
+        fi
+        install_dx_rt_via_debian
+    fi
     print_colored_v2 "SUCCESS" "Installing dx_rt completed."
 }
 
@@ -307,6 +375,23 @@ install_dx_rt_python_api() {
     print_colored_v2 "INFO" "=== Setup 'dx_engine' Python API... ==="
     if [ "${EXCLUDE_RT}" = "y" ]; then
         print_colored_v2 "WARNING" "Excluding 'dx_engine' Python API setup (--exclude-rt)."
+        return
+    fi
+
+    if [ "${USE_RT_SOURCE_BUILD}" != "y" ]; then
+        # dx_rt came from the prebuilt Debian package. Its postinst installed the
+        # dx_engine wheel into the SYSTEM python3, but the runtime apps use the
+        # venv, so install the same shipped wheel into the active venv instead of
+        # rebuilding python_package from source.
+        local whl
+        whl=$(find -L /usr/share/libdxrt-bin/python -maxdepth 1 -type f -name 'dx_engine-*.whl' 2>/dev/null | sort | head -1)
+        if [ -z "$whl" ]; then
+            print_colored_v2 "ERROR" "dx_engine wheel not found under /usr/share/libdxrt-bin/python (expected from the libdxrt-bin package). Exiting."
+            exit 1
+        fi
+        print_colored_v2 "INFO" "Installing dx_engine wheel into venv: ${whl}"
+        pip install --force-reinstall "${whl}" || { print_colored_v2 "ERROR" "'dx_engine' wheel install failed. Exiting."; exit 1; }
+        print_colored_v2 "INFO" "[OK] Setup 'dx_engine' Python API (from Debian package wheel)"
         return
     fi
 
@@ -767,6 +852,7 @@ USE_COMPILED_VERSION_CHECK="y" # This variable is not used in the provided scrip
 
 # variables for venv options
 USE_DRIVER_SOURCE_BUILD="n"
+USE_RT_SOURCE_BUILD="n"
 VENV_PATH_ARG="" # Stores user-provided venv path
 VENV_FORCE_REMOVE="y"
 VENV_REUSE="n"
@@ -818,6 +904,9 @@ for i in "$@"; do
             ;;
         --driver-source-build)
             USE_DRIVER_SOURCE_BUILD="y"
+            ;;
+        --rt-source-build)
+            USE_RT_SOURCE_BUILD="y"
             ;;
         --venv_path=*)
             VENV_PATH="${1#*=}"
