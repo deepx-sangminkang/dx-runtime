@@ -272,12 +272,12 @@ uninstall_dx_rt() {
 
     # Remove any dx_rt runtime installed via Debian package (libdxrt-bin, or the
     # legacy source package libdxrt). The source uninstall.sh below only knows
-    # about source-built files, so a prior apt install would otherwise leave
+    # about source-built files, so a prior package install would otherwise leave
     # dpkg's database owning stale files.
     for pkg in libdxrt-bin libdxrt; do
         if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
             print_colored_v2 "INFO" "Removing Debian package: ${pkg}"
-            sudo apt-get remove -y "$pkg" || { print_colored_v2 "WARNING" "Failed to remove Debian package ${pkg}."; }
+            sudo dpkg --purge "$pkg" || { print_colored_v2 "WARNING" "Failed to remove Debian package ${pkg}."; }
         fi
     done
 
@@ -338,10 +338,10 @@ install_dx_rt_via_debian() {
 
     print_colored_v2 "INFO" "Installing dx_rt Debian package: ${abs_deb_file}"
     # libdxrt-bin is a prebuilt binary package - no compiler toolchain required.
-    # apt-get install of a local .deb resolves its runtime Depends (libc6,
-    # libstdc++6, ...); the postinst runs ldconfig and installs the dx_engine
-    # Python wheel into the system python3.
-    sudo apt-get install -y "${abs_deb_file}" || {
+    # dpkg -i does not resolve Depends, so fix up missing runtime deps (libc6,
+    # libstdc++6, ...) with apt-get -f afterwards; the postinst runs ldconfig
+    # and installs the dx_engine Python wheel into the system python3.
+    sudo dpkg -i "${abs_deb_file}" || sudo apt-get install -f -y || {
         print_colored_v2 "ERROR" "Failed to install dx_rt Debian package. Exiting."
         exit 1
     }
@@ -381,12 +381,15 @@ install_dx_rt_python_api() {
     if [ "${USE_RT_SOURCE_BUILD}" != "y" ]; then
         # dx_rt came from the prebuilt Debian package. Its postinst installed the
         # dx_engine wheel into the SYSTEM python3, but the runtime apps use the
-        # venv, so install the same shipped wheel into the active venv instead of
-        # rebuilding python_package from source.
-        local whl
-        whl=$(find -L /usr/share/libdxrt-bin/python -maxdepth 1 -type f -name 'dx_engine-*.whl' 2>/dev/null | sort | head -1)
+        # venv, so install the shipped wheel matching the venv's Python version
+        # (cpXY tag) into the active venv instead of rebuilding python_package
+        # from source.
+        local pytag whl
+        pytag="cp$(python -c 'import sys;print(f"{sys.version_info[0]}{sys.version_info[1]}")')"
+        whl=$(find -L /usr/share/libdxrt-bin/python -maxdepth 1 -type f -name "dx_engine-*-${pytag}-${pytag}-*.whl" 2>/dev/null | sort | head -1)
         if [ -z "$whl" ]; then
-            print_colored_v2 "ERROR" "dx_engine wheel not found under /usr/share/libdxrt-bin/python (expected from the libdxrt-bin package). Exiting."
+            print_colored_v2 "ERROR" "dx_engine wheel for ${pytag} not found under /usr/share/libdxrt-bin/python (expected from the libdxrt-bin package)."
+            print_colored_v2 "ERROR" "Available wheels: $(find -L /usr/share/libdxrt-bin/python -maxdepth 1 -type f -name 'dx_engine-*.whl' 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')"
             exit 1
         fi
         print_colored_v2 "INFO" "Installing dx_engine wheel into venv: ${whl}"
@@ -769,7 +772,11 @@ main() {
                 print_colored_v2 "INFO" "Installing dx_rt..."
                 install_dx_rt
                 install_dx_rt_python_api
-                sanity_check "--dx_rt"
+                if [ "${USE_RT_SOURCE_BUILD}" = "y" ]; then
+                    sanity_check "--dx_rt"
+                else
+                    print_colored_v2 "SKIP" "Skipping dx_rt sanity check (Debian package install)."
+                fi
                 show_information_message
                 print_colored_v2 "INFO" "[OK] Installing dx_rt completed."
                 ;;
