@@ -277,7 +277,7 @@ uninstall_dx_rt() {
     for pkg in libdxrt-bin libdxrt; do
         if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
             print_colored_v2 "INFO" "Removing Debian package: ${pkg}"
-            sudo dpkg --purge "$pkg" || { print_colored_v2 "WARNING" "Failed to remove Debian package ${pkg}."; }
+            sudo apt-get purge -y "$pkg" || { print_colored_v2 "WARNING" "Failed to remove Debian package ${pkg}."; }
         fi
     done
 
@@ -338,13 +338,22 @@ install_dx_rt_via_debian() {
 
     print_colored_v2 "INFO" "Installing dx_rt Debian package: ${abs_deb_file}"
     # libdxrt-bin is a prebuilt binary package - no compiler toolchain required.
-    # dpkg -i does not resolve Depends, so fix up missing runtime deps (libc6,
-    # libstdc++6, ...) with apt-get -f afterwards; the postinst runs ldconfig
-    # and installs the dx_engine Python wheel into the system python3.
-    sudo dpkg -i "${abs_deb_file}" || sudo apt-get install -f -y || {
+    # apt-get resolves Depends (libc6, libstdc++6, ...) in one transaction.
+    # Stage the deb in a world-readable temp dir: apt's sandbox user '_apt'
+    # cannot read files under $HOME, which triggers a noisy "Download is
+    # performed unsandboxed as root" notice otherwise. The postinst runs
+    # ldconfig and installs the dx_engine Python wheel into the system python3.
+    local staged_dir
+    staged_dir=$(mktemp -d)
+    chmod 755 "${staged_dir}"
+    cp "${abs_deb_file}" "${staged_dir}/"
+    chmod 644 "${staged_dir}"/*.deb
+    if ! sudo apt-get install -y "${staged_dir}/$(basename "${abs_deb_file}")"; then
+        rm -rf "${staged_dir}"
         print_colored_v2 "ERROR" "Failed to install dx_rt Debian package. Exiting."
         exit 1
-    }
+    fi
+    rm -rf "${staged_dir}"
 }
 
 install_dx_rt() {
