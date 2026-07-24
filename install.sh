@@ -26,14 +26,20 @@ show_help() {
     echo -e ""
     echo -e "Options:"
     echo -e "  ${COLOR_GREEN}--all${COLOR_RESET}                              Install all dx-runtime modules"
-    echo -e "  ${COLOR_GREEN}--target=<module_name>${COLOR_RESET}             Install specify target dx-runtime module"
+    echo -e "  ${COLOR_GREEN}--runtime-only${COLOR_RESET}                     Install runtime-only modules (dx_rt_npu_linux_driver, dx_rt, dx_fw)"
+    echo -e "  ${COLOR_GREEN}--target=<module_name>${COLOR_RESET}             Install specify target dx-runtime module (comma-separated for multiple)"
     echo -e "                                     (ex> dx_fw | dx_rt_npu_linux_driver | dx_rt | dx_app | dx_stream)"
+    echo -e "                                     (ex> --target=dx_rt,dx_app)"
     echo -e ""
     echo -e "  ${COLOR_GREEN}[--skip-uninstall]${COLOR_RESET}                 Skip uninstall dx-runtime modules before installation"
     echo -e "  ${COLOR_GREEN}[--driver-source-build]${COLOR_RESET}            Build NPU driver from source if set (default: install via DKMS)"
+    echo -e "  ${COLOR_GREEN}[--rt-source-build]${COLOR_RESET}                Build dx_rt from source if set (default: install via Debian package)"
     echo -e ""
-    echo -e "  ${COLOR_GREEN}[--exclude-fw]${COLOR_RESET}                     Install all dx-runtime modules except dx_fw"
-    echo -e "  ${COLOR_GREEN}[--exclude-driver]${COLOR_RESET}                 Install all dx-runtime modules except dx_rt_npu_linux_driver"
+    echo -e "  ${COLOR_GREEN}[--exclude-fw]${COLOR_RESET}                     Skip dx_fw installation (works with --all or --target)"
+    echo -e "  ${COLOR_GREEN}[--exclude-driver]${COLOR_RESET}                 Skip dx_rt_npu_linux_driver installation (works with --all or --target)"
+    echo -e "  ${COLOR_GREEN}[--exclude-rt]${COLOR_RESET}                     Skip dx_rt installation (works with --all or --target)"
+    echo -e "  ${COLOR_GREEN}[--exclude-app]${COLOR_RESET}                    Skip dx_app installation (works with --all or --target)"
+    echo -e "  ${COLOR_GREEN}[--exclude-stream]${COLOR_RESET}                 Skip dx_stream installation (works with --all or --target)"
     echo -e ""
     echo -e "  ${COLOR_GREEN}[--use-ort=<y|n>]${COLOR_RESET}                  Set 'USE_ORT' build option to 'ON or OFF' (default: y)"
     echo -e "  ${COLOR_GREEN}[--sanity-check=<y|n>]${COLOR_RESET}             Turn SanityCheck ON or OFF for dx_rt (default: y)"
@@ -51,8 +57,11 @@ show_help() {
     echo -e ""
     echo -e "${COLOR_BOLD}Examples:${COLOR_RESET}"
     echo -e "  ${COLOR_YELLOW}$0 --all${COLOR_RESET}"
+    echo -e "  ${COLOR_YELLOW}$0 --runtime-only${COLOR_RESET}"
     echo -e "  ${COLOR_YELLOW}$0 --all --exclude-fw --exclude-driver${COLOR_RESET}"
+    echo -e "  ${COLOR_YELLOW}$0 --all --exclude-app --exclude-stream${COLOR_RESET}"
     echo -e "  ${COLOR_YELLOW}$0 --target=dx_rt_npu_linux_driver${COLOR_RESET}"
+    echo -e "  ${COLOR_YELLOW}$0 --target=dx_rt,dx_app${COLOR_RESET}"
     echo -e "  ${COLOR_YELLOW}$0 --target=dx_app --skip-uninstall --venv-reuse${COLOR_RESET}"
     echo -e "  ${COLOR_YELLOW}$0 --target=dx_rt --skip-uninstall --venv_path=/opt/my_runtime_venv --venv-force-remove${COLOR_RESET}"
     echo -e ""
@@ -214,9 +223,44 @@ driver_sanity_check() {
     fi
 }
 
+# dx_rt installed via Debian package (libdxrt-bin)?
+# Legacy libdxrt is a source-build artifact, so it is not checked here.
+is_dx_rt_debian_installed() {
+    dpkg-query -W -f='${Status}' libdxrt-bin 2>/dev/null | grep -q "install ok installed"
+}
+
+debian_sanity_check() {
+    echo "--- Debian package sanity check... ---"
+    if [ "${USE_SANITY_CHECK}" = "y" ]; then
+        local debian_sanity_script="/usr/share/libdxrt-bin/SanityCheckForDebian.sh"
+        if [ ! -f "${debian_sanity_script}" ]; then
+            print_colored_v2 "WARNING" "${debian_sanity_script} not found. Skipping Debian package sanity check."
+            return
+        fi
+        if ! bash "${debian_sanity_script}"; then
+            print_colored_v2 "ERROR" "Sanity Check failed. Exiting."
+            exit 1
+        fi
+    else
+        print_colored_v2 "WARNING" "Skipped to Sanity Check..."
+    fi
+}
+
 sanity_check() {
     echo "--- sanity check... ---"
     local sanity_check_option="$1"
+
+    # dx_rt installed via Debian package in this environment (regardless of
+    # this run's flags, e.g. dx_app-only install): use SanityCheckForDebian.sh
+    # instead of the source-build sanity check. The no-option case originally
+    # covered driver + rt, so run the driver sanity check alongside it.
+    if is_dx_rt_debian_installed; then
+        if [ "${sanity_check_option}" != "--dx_rt" ]; then
+            driver_sanity_check
+        fi
+        debian_sanity_check
+        return
+    fi
 
     if [ "${USE_SANITY_CHECK}" = "y" ]; then
         # Capture sanity check output to check for device initialization errors
@@ -261,6 +305,18 @@ uninstall_dx_rt() {
     fi
 
     print_colored_v2 "INFO" "Uninstalling dx_rt..."
+
+    # Remove any dx_rt runtime installed via Debian package (libdxrt-bin, or the
+    # legacy source package libdxrt). The source uninstall.sh below only knows
+    # about source-built files, so a prior package install would otherwise leave
+    # dpkg's database owning stale files.
+    for pkg in libdxrt-bin libdxrt; do
+        if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+            print_colored_v2 "INFO" "Removing Debian package: ${pkg}"
+            sudo apt-get purge -y "$pkg" || { print_colored_v2 "WARNING" "Failed to remove Debian package ${pkg}."; }
+        fi
+    done
+
     pushd "${RUNTIME_PATH}/dx_rt"
     if [ -f "uninstall.sh" ]; then
         ./uninstall.sh || { print_colored_v2 "WARNING" "dx_rt uninstall failed."; }
@@ -271,11 +327,7 @@ uninstall_dx_rt() {
     print_colored_v2 "SUCCESS" "Uninstalling dx_rt completed."
 }
 
-install_dx_rt() {
-    print_colored_v2 "INFO" "=== Installing dx_rt... ==="
-    uninstall_dx_rt
-
-    DX_RT_INCLUDED=1
+install_dx_rt_via_source_build() {
     set_use_ort
 
     . "${VENV_PATH}/bin/activate" || { print_colored_v2 "ERROR" "venv(${VENV_PATH}) activation failed. Exiting."; exit 1; }
@@ -286,14 +338,110 @@ install_dx_rt() {
     else
         ./install.sh --dep
     fi || { print_colored_v2 "ERROR" "dx_rt install failed. Exiting."; exit 1; }
-    
+
     ./build.sh --clean || { print_colored_v2 "ERROR" "dx_rt install failed. Exiting."; exit 1; }
     popd
+}
+
+install_dx_rt_via_debian() {
+    # release/latest ships arch-specific prebuilt binary packages
+    # (libdxrt-bin_<ver>_amd64.deb, libdxrt-bin_<ver>_arm64.deb). dpkg's arch
+    # name matches the .deb suffix exactly on Debian/Ubuntu (the only supported
+    # OSes), so use it to pick the right one. sort makes the pick deterministic
+    # when more than one candidate matches.
+    local deb_arch
+    deb_arch=$(dpkg --print-architecture 2>/dev/null)
+
+    local release_dir="${RT_PATH}/release/latest"
+    local deb_file
+    deb_file=$(find -L "${release_dir}" -maxdepth 1 -type f -name "libdxrt*_${deb_arch}.deb" | sort | head -1)
+    # Fall back to legacy arch-independent package (libdxrt_<ver>_all.deb).
+    if [ -z "$deb_file" ]; then
+        deb_file=$(find -L "${release_dir}" -maxdepth 1 -type f -name "libdxrt*_all.deb" | sort | head -1)
+    fi
+
+    # No package found (missing, or a dangling symlink that find -L skipped):
+    # hard-fail instead of silently degrading to a slow source build. The user
+    # asked for the Debian package; --rt-source-build is the explicit opt-in.
+    if [ -z "$deb_file" ]; then
+        print_colored_v2 "ERROR" "dx_rt Debian package not found for arch '${deb_arch}' under ${release_dir}."
+        print_colored_v2 "ERROR" "Use --rt-source-build to install dx_rt from source instead. Exiting."
+        exit 1
+    fi
+
+    local abs_deb_file
+    abs_deb_file=$(realpath "${deb_file}") || abs_deb_file="${deb_file}"
+
+    print_colored_v2 "INFO" "Installing dx_rt Debian package: ${abs_deb_file}"
+    # libdxrt-bin is a prebuilt binary package - no compiler toolchain required.
+    # apt-get resolves Depends (libc6, libstdc++6, ...) in one transaction.
+    # Stage the deb in a world-readable temp dir: apt's sandbox user '_apt'
+    # cannot read files under $HOME, which triggers a noisy "Download is
+    # performed unsandboxed as root" notice otherwise. The postinst runs
+    # ldconfig and installs the dx_engine Python wheel into the system python3.
+    local staged_dir
+    staged_dir=$(mktemp -d)
+    chmod 755 "${staged_dir}"
+    cp "${abs_deb_file}" "${staged_dir}/"
+    chmod 644 "${staged_dir}"/*.deb
+    if ! sudo apt-get install -y "${staged_dir}/$(basename "${abs_deb_file}")"; then
+        rm -rf "${staged_dir}"
+        print_colored_v2 "ERROR" "Failed to install dx_rt Debian package. Exiting."
+        exit 1
+    fi
+    rm -rf "${staged_dir}"
+}
+
+install_dx_rt() {
+    print_colored_v2 "INFO" "=== Installing dx_rt... ==="
+    if [ "${EXCLUDE_RT}" = "y" ]; then
+        print_colored_v2 "WARNING" "Excluding dx_rt installation."
+        return
+    fi
+    uninstall_dx_rt
+
+    DX_RT_INCLUDED=1
+
+    if [ "${USE_RT_SOURCE_BUILD}" = "y" ]; then
+        install_dx_rt_via_source_build
+    else
+        # USE_ORT is baked into the prebuilt package; --use-ort only affects a
+        # source build. Warn when the user asked for a non-default value so the
+        # silently-ignored flag doesn't surprise them.
+        if [ "${USE_ORT}" != "y" ]; then
+            print_colored_v2 "WARNING" "--use-ort=${USE_ORT} is ignored for the Debian package install (ORT is fixed in the prebuilt package). Use --rt-source-build to control USE_ORT."
+        fi
+        install_dx_rt_via_debian
+    fi
     print_colored_v2 "SUCCESS" "Installing dx_rt completed."
 }
 
 install_dx_rt_python_api() {
     print_colored_v2 "INFO" "=== Setup 'dx_engine' Python API... ==="
+    if [ "${EXCLUDE_RT}" = "y" ]; then
+        print_colored_v2 "WARNING" "Excluding 'dx_engine' Python API setup (--exclude-rt)."
+        return
+    fi
+
+    if [ "${USE_RT_SOURCE_BUILD}" != "y" ]; then
+        # dx_rt came from the prebuilt Debian package. Its postinst installed the
+        # dx_engine wheel into the SYSTEM python3, but the runtime apps use the
+        # venv, so install the shipped wheel matching the venv's Python version
+        # (cpXY tag) into the active venv instead of rebuilding python_package
+        # from source.
+        local pytag whl
+        pytag="cp$(python -c 'import sys;print(f"{sys.version_info[0]}{sys.version_info[1]}")')"
+        whl=$(find -L /usr/share/libdxrt-bin/python -maxdepth 1 -type f -name "dx_engine-*-${pytag}-${pytag}-*.whl" 2>/dev/null | sort | head -1)
+        if [ -z "$whl" ]; then
+            print_colored_v2 "ERROR" "dx_engine wheel for ${pytag} not found under /usr/share/libdxrt-bin/python (expected from the libdxrt-bin package)."
+            print_colored_v2 "ERROR" "Available wheels: $(find -L /usr/share/libdxrt-bin/python -maxdepth 1 -type f -name 'dx_engine-*.whl' 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')"
+            exit 1
+        fi
+        print_colored_v2 "INFO" "Installing dx_engine wheel into venv: ${whl}"
+        pip install --force-reinstall "${whl}" || { print_colored_v2 "ERROR" "'dx_engine' wheel install failed. Exiting."; exit 1; }
+        print_colored_v2 "INFO" "[OK] Setup 'dx_engine' Python API (from Debian package wheel)"
+        return
+    fi
 
     pushd "${RT_PATH}/python_package"
     pip install . || { print_colored_v2 "ERROR" "'dx_engine' Python API setup failed. Exiting."; exit 1; }
@@ -320,6 +468,10 @@ uninstall_dx_app() {
 
 install_dx_app() {
     print_colored_v2 "INFO" "=== Installing dx_app... ==="
+    if [ "${EXCLUDE_APP}" = "y" ]; then
+        print_colored_v2 "WARNING" "Excluding dx_app installation."
+        return
+    fi
     uninstall_dx_app
 
     DX_APP_INCLUDED=1
@@ -350,6 +502,10 @@ uninstall_dx_stream() {
 
 install_dx_stream() {
     print_colored_v2 "INFO" "=== Installing dx_stream... ==="
+    if [ "${EXCLUDE_STREAM}" = "y" ]; then
+        print_colored_v2 "WARNING" "Excluding dx_stream installation."
+        return
+    fi
 
     uninstall_dx_stream
 
@@ -509,8 +665,26 @@ uninstall_all_runtime_modules() {
     print_colored_v2 "INFO" "=== Uninstalling all runtime modules... ==="
     pushd "${RUNTIME_PATH}"
 
-    local submodules=("dx_rt" "dx_app" "dx_stream")
-
+    # Honor --exclude-* flags so 'skip install' also means 'skip uninstall',
+    # otherwise --all --exclude-<x> would remove <x> without reinstalling it.
+    # Note: dx_fw is not included here because firmware is flashed to the
+    # device rather than installed/uninstalled like the other modules.
+    local submodules=()
+    if [ "${EXCLUDE_RT}" = "y" ]; then
+        print_colored_v2 "SKIP" "Skipping dx_rt uninstall because --exclude-rt is set."
+    else
+        submodules+=("dx_rt")
+    fi
+    if [ "${EXCLUDE_APP}" = "y" ]; then
+        print_colored_v2 "SKIP" "Skipping dx_app uninstall because --exclude-app is set."
+    else
+        submodules+=("dx_app")
+    fi
+    if [ "${EXCLUDE_STREAM}" = "y" ]; then
+        print_colored_v2 "SKIP" "Skipping dx_stream uninstall because --exclude-stream is set."
+    else
+        submodules+=("dx_stream")
+    fi
     if [ "${EXCLUDE_DRIVER}" = "y" ]; then
         print_colored_v2 "SKIP" "Skipping dx_rt_npu_linux_driver uninstall because --exclude-driver is set."
     else
@@ -564,8 +738,8 @@ show_information_message() {
 main() {
     # this function is defined in scripts/common_util.sh
     # Usage: os_check "supported_os_names" "ubuntu_versions" "debian_versions"
-    os_check "ubuntu debian" "18.04 20.04 22.04 24.04" "12 13" || {
-        local message="Current OS is not officially supported. Officially supported OS versions are Ubuntu 18.04/20.04/22.04/24.04 and Debian 12."
+    os_check "ubuntu debian" "18.04 20.04 22.04 24.04 26.04" "12 13" || {
+        local message="Current OS is not officially supported. Officially supported OS versions are Ubuntu 18.04/20.04/22.04/24.04/26.04 and Debian 12/13."
         local hint_message="For other OS versions, please refer to the manual installation guide at https://github.com/DEEPX-AI/dx_rt/blob/main/docs/docs/02_Installation_on_Linux.md#system-requirements"
         local origin_cmd=""
         local suggested_action_cmd=""
@@ -612,71 +786,101 @@ main() {
     install_python_and_venv
     venv_activate "$VENV_PATH"
 
-    case $TARGET_PKG in
-        dx_rt_npu_linux_driver)
-            print_colored_v2 "INFO" "Installing dx_rt_npu_linux_driver..."
-            stop_dxrt_service
-            install_dx_rt_npu_linux_driver
-            restart_dxrt_service
-            driver_sanity_check
-            show_information_message
-            print_colored_v2 "INFO" "[OK] Installing dx_rt_npu_linux_driver"
-            ;;
-        dx_rt)
-            print_colored_v2 "INFO" "Installing dx_rt..."
-            install_dx_rt
-            install_dx_rt_python_api
-            sanity_check "--dx_rt"
-            show_information_message
-            print_colored_v2 "INFO" "[OK] Installing dx_rt"
-            ;;
-        dx_app)
-            print_colored_v2 "INFO" "Installing dx_app..."
-            install_dx_app
-            sanity_check
-            show_information_message
-            print_colored_v2 "INFO" "[OK] Installing dx_app"
-            ;;
-        dx_stream)
-            print_colored_v2 "INFO" "Installing dx_stream..."
-            install_dx_stream
-            sanity_check
-            show_information_message
-            print_colored_v2 "INFO" "[OK] Installing dx_stream"
-            ;;
-        dx_fw)
-            print_colored_v2 "INFO" "Installing dx_fw..."
-            stop_dxrt_service
-            install_dx_fw
-            restart_dxrt_service
-            sanity_check
-            show_information_message
-            print_colored_v2 "INFO" "[OK] Installing dx_fw"
-            ;;
-        all)
-            print_colored_v2 "INFO" "Installing all runtime modules..."
-            uninstall_all_runtime_modules
-            install_python_and_venv      # venv recreation
-            venv_activate "$VENV_PATH"   # venv reactivate
+    # Split TARGET_PKG by comma into an array
+    IFS=',' read -ra TARGET_LIST <<< "$TARGET_PKG"
+    # Trim leading/trailing whitespace from each element
+    for i in "${!TARGET_LIST[@]}"; do
+        TARGET_LIST[$i]="${TARGET_LIST[$i]## }"
+        TARGET_LIST[$i]="${TARGET_LIST[$i]%% }"
+    done
 
-            stop_dxrt_service
-            install_dx_rt_npu_linux_driver
-            restart_dxrt_service
-            install_dx_rt
-            install_dx_rt_python_api
-            stop_dxrt_service
-            install_dx_fw
-            restart_dxrt_service
-            install_dx_app
-            install_dx_stream
-            sanity_check
-            show_information_message
-            print_colored_v2 "INFO" "[OK] Installing all runtime modules"
-            ;;
-        *)
-            show_help "error" "The '--all' option was not specified, or the '--target' option is invalid. Target packages will not be installed."
-            ;;
-    esac
+    for target in "${TARGET_LIST[@]}"; do
+        case $target in
+            dx_rt_npu_linux_driver)
+                if [ "${EXCLUDE_DRIVER}" = "y" ]; then
+                    print_colored_v2 "SKIP" "Skipping dx_rt_npu_linux_driver installation (--exclude-driver)."
+                    continue
+                fi
+                print_colored_v2 "INFO" "Installing dx_rt_npu_linux_driver..."
+                stop_dxrt_service
+                install_dx_rt_npu_linux_driver
+                restart_dxrt_service
+                driver_sanity_check
+                show_information_message
+                print_colored_v2 "INFO" "[OK] Installing dx_rt_npu_linux_driver completed."
+                ;;
+            dx_rt)
+                if [ "${EXCLUDE_RT}" = "y" ]; then
+                    print_colored_v2 "SKIP" "Skipping dx_rt installation (--exclude-rt)."
+                    continue
+                fi
+                print_colored_v2 "INFO" "Installing dx_rt..."
+                install_dx_rt
+                install_dx_rt_python_api
+                sanity_check "--dx_rt"
+                show_information_message
+                print_colored_v2 "INFO" "[OK] Installing dx_rt completed."
+                ;;
+            dx_app)
+                if [ "${EXCLUDE_APP}" = "y" ]; then
+                    print_colored_v2 "SKIP" "Skipping dx_app installation (--exclude-app)."
+                    continue
+                fi
+                print_colored_v2 "INFO" "Installing dx_app..."
+                install_dx_app
+                sanity_check
+                show_information_message
+                print_colored_v2 "INFO" "[OK] Installing dx_app completed."
+                ;;
+            dx_stream)
+                if [ "${EXCLUDE_STREAM}" = "y" ]; then
+                    print_colored_v2 "SKIP" "Skipping dx_stream installation (--exclude-stream)."
+                    continue
+                fi
+                print_colored_v2 "INFO" "Installing dx_stream..."
+                install_dx_stream
+                sanity_check
+                show_information_message
+                print_colored_v2 "INFO" "[OK] Installing dx_stream completed."
+                ;;
+            dx_fw)
+                if [ "${EXCLUDE_FW}" = "y" ]; then
+                    print_colored_v2 "SKIP" "Skipping dx_fw installation (--exclude-fw)."
+                    continue
+                fi
+                print_colored_v2 "INFO" "Installing dx_fw..."
+                stop_dxrt_service
+                install_dx_fw
+                restart_dxrt_service
+                sanity_check
+                show_information_message
+                print_colored_v2 "INFO" "[OK] Installing dx_fw completed."
+                ;;
+            all)
+                print_colored_v2 "INFO" "Installing all runtime modules..."
+                uninstall_all_runtime_modules
+                install_python_and_venv      # venv recreation
+                venv_activate "$VENV_PATH"   # venv reactivate
+
+                stop_dxrt_service
+                install_dx_rt_npu_linux_driver
+                restart_dxrt_service
+                install_dx_rt
+                install_dx_rt_python_api
+                stop_dxrt_service
+                install_dx_fw
+                restart_dxrt_service
+                install_dx_app
+                install_dx_stream
+                sanity_check
+                show_information_message
+                print_colored_v2 "INFO" "[OK] Installing all runtime modules completed."
+                ;;
+            *)
+                show_help "error" "Invalid target '$target'. The '--all' option was not specified, or the '--target' option is invalid."
+                ;;
+        esac
+    done
 }
 
 DX_RT_INCLUDED=0
@@ -686,6 +890,9 @@ DX_APP_INCLUDED=0
 TARGET_PKG=""
 EXCLUDE_FW="n"
 EXCLUDE_DRIVER="n"
+EXCLUDE_RT="n"
+EXCLUDE_APP="n"
+EXCLUDE_STREAM="n"
 SKIP_UNINSTALL="n"
 USE_ORT="y"
 USE_SANITY_CHECK="y"
@@ -693,6 +900,7 @@ USE_COMPILED_VERSION_CHECK="y" # This variable is not used in the provided scrip
 
 # variables for venv options
 USE_DRIVER_SOURCE_BUILD="n"
+USE_RT_SOURCE_BUILD="n"
 VENV_PATH_ARG="" # Stores user-provided venv path
 VENV_FORCE_REMOVE="y"
 VENV_REUSE="n"
@@ -701,7 +909,16 @@ VENV_REUSE="n"
 for i in "$@"; do
     case "$1" in
         --all)
+            if [ -n "$TARGET_PKG" ]; then
+                show_help "error" "--all cannot be combined with --runtime-only or --target"
+            fi
             TARGET_PKG=all
+            ;;
+        --runtime-only)
+            if [ -n "$TARGET_PKG" ]; then
+                show_help "error" "--runtime-only cannot be combined with --all or --target"
+            fi
+            TARGET_PKG="dx_rt_npu_linux_driver,dx_rt,dx_fw"
             ;;
         --exclude-fw)
             EXCLUDE_FW="y"
@@ -709,10 +926,22 @@ for i in "$@"; do
         --exclude-driver)
             EXCLUDE_DRIVER="y"
             ;;
+        --exclude-rt)
+            EXCLUDE_RT="y"
+            ;;
+        --exclude-app)
+            EXCLUDE_APP="y"
+            ;;
+        --exclude-stream)
+            EXCLUDE_STREAM="y"
+            ;;
         --skip-uninstall)
             SKIP_UNINSTALL="y"
             ;;
         --target=*)
+            if [ -n "$TARGET_PKG" ]; then
+                show_help "error" "--target cannot be combined with --all or --runtime-only (for multiple targets, use: --target=module1,module2)"
+            fi
             TARGET_PKG="${1#*=}"
             ;;
         --use-ort=*)
@@ -723,6 +952,9 @@ for i in "$@"; do
             ;;
         --driver-source-build)
             USE_DRIVER_SOURCE_BUILD="y"
+            ;;
+        --rt-source-build)
+            USE_RT_SOURCE_BUILD="y"
             ;;
         --venv_path=*)
             VENV_PATH="${1#*=}"
