@@ -12,6 +12,23 @@
 
 Here are the **DX-Runtime v2.4.0** Release Note for each module.
 
+### DX-RUNTIME (v2.4.0)
+
+**_1. Changed_**  
+- `install.sh` installs dx_rt from the prebuilt Debian package by default (no compiler toolchain, much faster); use `--rt-source-build` for the previous source build
+- Supported OS extended to Ubuntu 26.04 and Debian 13
+
+**_2. Fixed_**  
+- `--exclude-*` modules are no longer uninstalled before an install, so `--all --exclude-<module>` keeps the existing module intact
+- Reinstall/uninstall of dx_rt now cleans up a previously package-installed runtime instead of leaving stale files behind
+
+**_3. Added_**  
+- `--runtime-only` to install only the runtime stack (NPU driver, dx_rt, dx_fw)
+- `--target=` accepts multiple modules at once (ex> `--target=dx_rt,dx_app`)
+- `--exclude-rt`, `--exclude-app`, `--exclude-stream` to skip individual modules
+
+---
+
 ### DX_FW (v2.7.3)
 
 **_1. Changed_**  
