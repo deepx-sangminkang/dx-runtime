@@ -1,5 +1,82 @@
 # RELEASE_NOTES
 
+## DX-Runtime v2.4.1 / 2026-08-03
+
+- DX_FW: v2.7.4
+- NPU Driver: v2.6.0
+- DX-RT: v3.4.1
+- DX-Stream: v3.1.1
+- DX-APP: v3.2.1
+
+---
+
+Here are the **DX-Runtime v2.4.1** Release Notes for each module.
+
+### DX_FW (v2.7.4)
+
+**_1. Changed_**  
+
+**_2. Fixed_**  
+- Added PCIe message API for MSI IMWR to support VM environments
+
+**_3. Added_**  
+
+---
+
+### NPU Driver (v2.6.0)
+
+**_1. Changed_**  
+- Enhanced MSI handling for virtualization support in eDMA driver
+
+**_2. Fixed_**  
+- Added support for kernel version 4.4.0
+- Fixed issue where forked child's close() could cancel parent's ioctl wait
+
+**_3. Added_**  
+
+---
+
+### DX-RT (v3.4.1)
+
+**Packages unchanged:** libdxrt, libdxrt-bin, and dx_engine wheels remain at v3.4.0. This release contains documentation updates only.
+
+**_1. Changed_**  
+
+**_2. Fixed_**  
+- Corrected supported OS list: removed Ubuntu 18.04 (EOL), added Ubuntu 26.04
+- Clarified ONNX Runtime version recommendation wording
+- Removed stray emoji characters from C++ and Python tutorial pages
+
+**_3. Added_**  
+- Added bundled wheel installation guide for virtual environments
+- Added info note documenting `/usr/share/libdxrt-bin/python/` bundled wheel directory
+
+---
+
+### DX-Stream (v3.1.1)
+
+**_1. Changed_**  
+
+**_2. Fixed_**  
+- Fixed typos and added missing details in documentation
+
+**_3. Added_**  
+
+---
+
+### DX-APP (v3.2.1)
+
+**_1. Changed_**  
+- Updated all example commands in README and docs to the new model filename convention (e.g. YoloV9S.dxnn -> yolov9-s_640x640.dxnn)
+- Super-resolution now saves both a side-by-side comparison (sr_input_output.jpg) and the standalone upscaled output.
+
+**_2. Fixed_**  
+- Fixed RealESRGAN discolored output vs. C++: corrected color rounding and RGB -> BGR channel order, and stopped routing 3-channel SR models through the luminance-only tiled path
+
+**_3. Added_**  
+
+---
+
 ## DX-Runtime v2.4.0 / 2026-07-22
 
 - DX_FW: v2.7.3
@@ -10,16 +87,33 @@
 
 ---
 
-Here are the **DX-Runtime v2.4.0** Release Note for each module.
+Here are the **DX-Runtime v2.4.0** Release Notes for each module.
+
+### DX-RUNTIME (v2.4.0)
+
+**_1. Changed_**  
+- `install.sh` installs dx_rt from the prebuilt Debian package by default (no compiler toolchain, much faster); use `--rt-source-build` for the previous source build
+- Supported OS extended to Ubuntu 26.04 and Debian 13
+
+**_2. Fixed_**  
+- `--exclude-*` modules are no longer uninstalled before an install, so `--all --exclude-<module>` keeps the existing module intact
+- Reinstall/uninstall of dx_rt now cleans up a previously package-installed runtime instead of leaving stale files behind
+
+**_3. Added_**  
+- `--runtime-only` to install only the runtime stack (NPU driver, dx_rt, dx_fw)
+- `--target=` accepts multiple modules at once (e.g. `--target=dx_rt,dx_app`)
+- `--exclude-rt`, `--exclude-app`, `--exclude-stream` to skip individual modules
+
+---
 
 ### DX_FW (v2.7.3)
 
 **_1. Changed_**  
 - Revert M1/M1M IC and M.2 module and DX-H1 Quattro board products PCIe device id to `0x0000`.
 - Adjust cpu reset delay from 20ms to 200ms to ensure stable PLL lock.
-- Update OTP Revision.  
+- Updated OTP Revision.  
 - Disabled Root Complex Tx Equalization Preset 10 by default during PCIe link equalization, as it is strictly reserved for compliance test and can cause the link to enter compliance/test loops during normal boot.  
-- Change BAR0 type from prefetchable to non-prefetchable on VNPU board type.  
+- Changed BAR0 type from prefetchable to non-prefetchable on VNPU board type.  
 
 **_2. Fixed_**  
 - Clear input queues when all bound option is deleted.  
@@ -54,7 +148,7 @@ Here are the **DX-Runtime v2.4.0** Release Note for each module.
 - CLI binary names updated: `dxrt-cli` → `dxcli`, `parse_model` → `dxparse`, `run_model` → `dxrun` (old names remain as backward-compatible aliases)
 - Python bindings now use header-only dxrt_cxx_api.h instead of direct C++ linkage
 - libdxrt.so exports C symbols only (dxrt_*); internal C++ symbols hidden via version script
-- Update minimum versions: Driver 2.5.0, PCIe Driver 2.4.0, Firmware 2.7.0
+- Updated minimum versions: Driver 2.5.0, PCIe Driver 2.4.0, Firmware 2.7.0
 - Code style cleanup and dependency updates (cxxopts v3.1.1 → v3.3.1, lazy matplotlib loading)
 
 **_2. Fixed_**  
@@ -120,7 +214,7 @@ Here are the **DX-Runtime v2.4.0** Release Note for each module.
 - Windows Visual Studio solution package extraction workflow with automatic OpenCV/DXRT CMake configuration
 - Build enhancements: `--demo-models` download option, minimal/category-based builds, Windows build selection TUI, `--all` flag
 - Knowledge base (`.deepx/`): specialized agents, app-building/SWE skills, multi-platform agent-instruction generation via `dx-agent-gen`
-- Support for 69 net-new models (280 → 349 models) across 22 AI task categories
+- Supported for 67 net-new models (280 → 347 models) across 22 AI task categories
 - 5 new AI tasks: 3D Object Detection (SFA3D), Keypoint Detection (SuperPoint), Object Pose Estimation (DOPE), Panoptic Driving Perception (YOLOPv2), Hand Detection (MediaPipe Hand)
 - 7 new post-processors + pybind bindings (43 → 50 classes), 3 C++ factory interfaces, 3 visualizers
 - Per-model Python examples (4 variants) and C++ examples (sync/async) for all new models
@@ -138,14 +232,14 @@ Here are the **DX-Runtime v2.4.0** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.3.3** Release Note for each module.
+Here are the **DX-Runtime v2.3.3** Release Notes for each module.
 
 ### NPU Driver (v2.4.1)
 
 **_1. Changed_**  
 
 **_2. Fixed_**  
-- Add missing Debian package files for `dx_rt_npu_linux_driver`
+- Added missing Debian package files for `dx_rt_npu_linux_driver`
 
 **_3. Added_**  
 
@@ -161,7 +255,7 @@ Here are the **DX-Runtime v2.3.3** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.3.2** Release Note for each module.
+Here are the **DX-Runtime v2.3.2** Release Notes for each module.
 
 
 ### DX-RT (v3.3.2)
@@ -170,7 +264,7 @@ Here are the **DX-Runtime v2.3.2** Release Note for each module.
 - Removed redundant build artifacts and temporary directories from the Debian package.
 
 **_2. Fixed_**
-- Improve Python extension module linking for _pydxrt build.
+- Improved Python extension module linking for _pydxrt build.
 
 **_3. Added_**  
 - Added conditional pip upgrade (v21.3+) to ensure build stability on legacy OS environments.
@@ -187,16 +281,16 @@ Here are the **DX-Runtime v2.3.2** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.3.1** Release Note for each module.
+Here are the **DX-Runtime v2.3.1** Release Notes for each module.
 
 
 ### DX-RT (v3.3.1)
 
 **_1. Changed_**
-- Change the version of pre-built onnxruntime(1.23.2 -> 1.22.0) and openvino(25.4 -> 25.1)
+- Changed the version of pre-built onnxruntime(1.23.2 -> 1.22.0) and openvino(25.4 -> 25.1)
 
 **_2. Fixed_**
-- Fix error in uninstall logic
+- Fixed error in uninstall logic
 
 **_3. Added_**  
 
@@ -207,17 +301,17 @@ Here are the **DX-Runtime v2.3.1** Release Note for each module.
 **_2. Fixed_**  
 
 **_3. Added_**  
-- add License information for third-party models & datasets
+- Added license information for third-party models & datasets
 
 ### DX-Stream (v3.0.1)
 
 **_1. Changed_**  
 
 **_2. Fixed_**  
-- Fix uninstall not removing apps build directories and pydxs build cache
+- Fixed uninstall not removing apps build directories and pydxs build cache
 
 **_3. Added_**  
-- add License information for third-party models & datasets
+- Added license information for third-party models & datasets
 
 ---
 
@@ -231,7 +325,7 @@ Here are the **DX-Runtime v2.3.1** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.3.0** Release Note for each module.
+Here are the **DX-Runtime v2.3.0** Release Notes for each module.
 
 ### DX_FW (v2.5.1 ~ 2.5.6)
 
@@ -323,17 +417,17 @@ Here are the **DX-Runtime v2.3.0** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.2.2** Release Note for each module.
+Here are the **DX-Runtime v2.2.2** Release Notes for each module.
 
 ### DX-APP (v3.0.2)
 
 **_1. Changed_**
 - Copy of dxrt and vkpkg DLLs into the dx-app/bin directory when building with MSVC.
-- Update sample models version from dx_com v2.2.0 to v2.2.1
+- Updated sample models version from dx_com v2.2.0 to v2.2.1
 
 **_2. Fixed_**
-- Remove experimental filesystem includes and update float literals in example cpp files for build error on windows
-- Refactor apply_argmax to reduce nesting and fix gcovr warnings
+- Removed experimental filesystem includes and updated float literals in example cpp files for build error on windows
+- Refactored apply_argmax to reduce nesting and fix gcovr warnings
 
 **_3. Added_**
 - Added vcpkg installation script for windows build. 
@@ -341,7 +435,7 @@ Here are the **DX-Runtime v2.2.2** Release Note for each module.
 ### DX-Stream (v2.2.1)
 
 **_1. Changed_**
-- Update sample models version from dx_com v2.2.0 to v2.2.1
+- Updated sample models version from dx_com v2.2.0 to v2.2.1
 
 ---
 
@@ -351,7 +445,7 @@ Here are the **DX-Runtime v2.2.2** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.2.1** Release Note for each module.
+Here are the **DX-Runtime v2.2.1** Release Notes for each module.
 
 ### DX-APP (v3.0.1)
 
@@ -363,7 +457,7 @@ Here are the **DX-Runtime v2.2.1** Release Note for each module.
 
 **_3. Added_**
 
-- Add yolov26 cls, yolo26 pose, yolo26 seg, yolo26 obb examples
+- Added yolov26 cls, yolo26 pose, yolo26 seg, yolo26 obb examples
 
 ---
 
@@ -377,7 +471,7 @@ Here are the **DX-Runtime v2.2.1** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.2.0** Release Note for each module.
+Here are the **DX-Runtime v2.2.0** Release Notes for each module.
 
 ### DX_FW (v2.5.0)
 
@@ -494,7 +588,7 @@ Here are the **DX-Runtime v2.2.0** Release Note for each module.
 
 ---
 
-Here are the **DX-Runtime v2.1.0** Release Note for each module.
+Here are the **DX-Runtime v2.1.0** Release Notes for each module.
 
 ### DX_FW (v2.2.0 ~ v2.4.0)
 
@@ -602,7 +696,7 @@ Here are the **DX-Runtime v2.1.0** Release Note for each module.
 - Model Accuracy: DeepLabV3 Semantic Segmentation model accuracy may be slightly degraded (will be fixed in next release).
 - PPU Converter: dx-compiler v2.1.0 does not yet support converting face detection and pose estimation models to PPU format.
 
-For detailed updated items, refer to **each module's Release Note.**
+For detailed updated items, refer to **each module's Release Notes.**
 
 ---
 
@@ -616,7 +710,7 @@ For detailed updated items, refer to **each module's Release Note.**
 
 ---
 
-Here are the **DX-Runtime v2.0.0** Release Note for each module.
+Here are the **DX-Runtime v2.0.0** Release Notes for each module.
 
 ### DX_FW (v2.1.1 ~ v2.1.4)
 
@@ -653,7 +747,7 @@ Here are the **DX-Runtime v2.0.0** Release Note for each module.
 
 - Minimum Versions: Updated minimum versions for the driver, PCIe driver, and firmware.
 - Performance: Increased the number of threads for `DeviceOutputWorker` from 3 to 4.
-- Build Process: Changed the default build option to `USE_ORT=ON` and updated the compiler to version 14. Add automatic handling of input dummy padding and output dummy slicing when USE_ORT=OFF (build-time or via InferenceOption).
+- Build Process: Changed the default build option to `USE_ORT=ON` and updated the compiler to version 14. Added automatic handling of input dummy padding and output dummy slicing when USE_ORT=OFF (build-time or via InferenceOption).
 
 **_2. Fixed:_**
 
@@ -665,7 +759,7 @@ Here are the **DX-Runtime v2.0.0** Release Note for each module.
 - Monitoring & Tools: Added a new dxtop monitoring tool and a `dxrt-cli --errorstat` option for PCIe details.
 - New Features: Implemented a new USB inference module and Sanity Check features.
 - APIs & Examples: Included new Python APIs and examples for configuration and device status.
-- Add support for both `.dxnn` file formats: DXNN v6 (compiled with dx_com 1.40.2 or later) and DXNN v7 (compiled with dx_com 2.x.x).
+- Added support for both `.dxnn` file formats: DXNN v6 (compiled with dx_com 1.40.2 or later) and DXNN v7 (compiled with dx_com 2.x.x).
 
 ### DX-Stream (v2.0.0)
 
@@ -713,7 +807,7 @@ For detailed updated items, refer to **each module's Release Notes.**
 - DX_FW : v2.1.0
 - NPU Driver : v1.5.0
 - DX-RT : v2.9.5
-- DX-Stram : v1.7.0
+- DX-Stream : v1.7.0
 - DX-APP : v1.11.0
 
 We're excited to announce the **initial release of DX-Runtime v1.0.0.**
