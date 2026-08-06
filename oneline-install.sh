@@ -25,7 +25,14 @@ esac
 
 verify_sha256() {
     file="$1"; expected="$2"; label="$3"
-    actual="$(sha256sum "$file" | awk '{print $1}')"
+    [ ${#expected} -eq 64 ] || die "malformed SHA256 in manifest for ${label}: ${expected}"
+    case "$expected" in
+        *[!0-9a-f]*) die "malformed SHA256 in manifest for ${label}: ${expected}" ;;
+    esac
+    # capture sha256sum's own exit status directly — piping through awk would
+    # mask a failed sha256sum (unreadable file) behind awk's own exit 0.
+    actual="$(sha256sum "$file")" || die "failed to read ${label} for checksum verification: ${file}"
+    actual="${actual%% *}"
     [ "$actual" = "$expected" ] || die "checksum mismatch for ${label}: expected ${expected}, got ${actual}"
 }
 
