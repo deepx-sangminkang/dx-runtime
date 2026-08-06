@@ -22,6 +22,7 @@ DX_REF="${DX_REF:-main}"
 case "$DX_REF" in
     ''|*..*|/*|*[!A-Za-z0-9._/-]*) die "invalid DX_REF: $DX_REF" ;;
 esac
+[ -z "${DX_VERSION:-}" ] || warn "DX_VERSION is ignored by dx-runtime; using DX_REF=${DX_REF} instead"
 
 verify_sha256() {
     file="$1"; expected="$2"; label="$3"
