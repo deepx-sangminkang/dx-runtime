@@ -47,6 +47,19 @@ DX-Runtime support installation in docker envirionments.
 
 You can install DX-Runtime by following the instructions at this [Link](https://github.com/DEEPX-AI/dx-all-suite/blob/main/docs/source/02_Setting_Up_Environment.md#docker-installation) 
 
+### One-Line Installation (Runtime-Only)
+
+For a quick setup of just the NPU driver, DX-RT, and DX-FW — without cloning this repository — run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DEEPX-AI/dx-runtime/main/oneline-install.sh | sh
+```
+
+This installs `dx_rt_npu_linux_driver`, `dx_rt`, and `dx_fw` from release assets only. It does **not** cover `dx_app` or `dx_stream` — for those, use the Local or Docker Installation above.
+
+- A reboot is required afterward to load the NPU driver.
+- If no NPU device is detected, the firmware update step is skipped with a warning; rerun the same command after reboot to complete it.
+- Set `DX_REF=<branch|tag>` to select the dx-runtime version manifest to install from (default: `main`).
 
 ---
 
