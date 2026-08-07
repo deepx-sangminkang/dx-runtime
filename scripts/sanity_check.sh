@@ -1,6 +1,6 @@
 #!/bin/bash
 SCRIPT_DIR=$(realpath "$(dirname "$0")")
-RUNTIME_PATH=$(realpath -s "${SCRIPT_DIR}/../") # Assuming color_env.sh is in scripts/ relative to this test file's parent
+RUNTIME_PATH=$(realpath -s "${SCRIPT_DIR}/../") # repo root (parent of scripts/)
 DRIVER_PATH="${RUNTIME_PATH}/dx_rt_npu_linux_driver"
 DEBIAN_SANITY_SCRIPT="/usr/share/libdxrt-bin/SanityCheckForDebian.sh"
 
@@ -54,7 +54,7 @@ print_sanity_result() {
         print_colored "⚠️  ERROR: SanityCheck.sh was not run with sufficient permissions (e.g., as root)." "ERROR"
         print_colored "Please ensure you run this script with 'sudo'." "RED"
     else
-        print_colored "❓ UNKNOWN: Sanity check exited with an unexpected status code: $status." "YELLO"
+        print_colored "❓ UNKNOWN: Sanity check exited with an unexpected status code: $status." "YELLOW"
     fi
 }
 
@@ -87,15 +87,18 @@ run_source_sanity_check() {
     check_and_install_package "dkms" "dkms"
     echo ""
 
-    pushd "${RUNTIME_PATH}/dx_rt" > /dev/null
-    local sanity_check_cmd="./SanityCheck.sh ${sanity_check_args}"
+    pushd "${RUNTIME_PATH}/dx_rt" > /dev/null || {
+        print_colored "❌ ${RUNTIME_PATH}/dx_rt directory not found." "ERROR"
+        return 1
+    }
 
     echo "Attempting to run the DeepX SDK source-build sanity check..."
     echo "---"
 
     # Execute SanityCheck.sh and capture its exit status.
     # We use `sudo` here because SanityCheck.sh requires root privileges.
-    sudo ${sanity_check_cmd}
+    # ${sanity_check_args} stays unquoted: empty must expand to zero args.
+    sudo ./SanityCheck.sh ${sanity_check_args}
     local status=$?
     popd > /dev/null
     return $status
