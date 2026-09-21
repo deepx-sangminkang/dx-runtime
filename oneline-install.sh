@@ -10,7 +10,8 @@
 #   Pin a specific component with:
 #     DX_RT_VERSION=3.4.2      dx_rt (libdxrt-bin)
 #     DX_DRIVER_VERSION=2.6.0  dx_rt_npu_linux_driver (DKMS)
-#     DX_FW_VERSION=2.7.4      dx_fw (M1/M1M/H1 firmware)
+#     DX_FW_VERSION=2.7.4      dx_fw — pins M1, M1M and H1 together; they are
+#                              versioned as one firmware set, not individually
 #
 # NOTE: artifacts are served over HTTPS from raw.githubusercontent.com and are NOT
 # checksum-verified — tracking a moving branch makes pinning a hash impossible.
@@ -52,6 +53,8 @@ update_fw() {
     chip_id="$1"; chip_name="$2"; fw_bin="$3"
     if check_output="$(dxrt-cli "--check-${chip_id}" 2>&1)"; then
         log "Updating DX-${chip_name} firmware"
+        # -g reads the image's version header and checks it against the device,
+        # so a mismatched binary is rejected before -u writes anything to flash.
         dxrt-cli -g "$fw_bin" || die "DX-${chip_name} firmware version check failed"
         dxrt-cli -u "$fw_bin" || die "DX-${chip_name} firmware update failed"
         log "DX-${chip_name} firmware update completed"
@@ -78,7 +81,8 @@ main() {
     # world-readable so apt's sandbox user _apt can read the staged debs
     WORK="$(mktemp -d)"
     chmod 755 "$WORK"
-    trap 'rm -rf "$WORK"' EXIT INT TERM
+    # HUP included so a dropped terminal during a curl | sh still cleans up.
+    trap 'rm -rf "$WORK"' EXIT INT TERM HUP
 
     log "Resolving component versions"
     DRIVER_VER="${DX_DRIVER_VERSION:-$(resolve_version "$RAW/dx_rt_npu_linux_driver/main/release/latest" "driver")}"
@@ -99,17 +103,23 @@ main() {
 
     log "Downloading NPU driver (${DRIVER_VER})"
     curl -fL "$DRIVER_URL" -o "$WORK/driver.deb" \
-        || die "failed to download NPU driver: $DRIVER_URL"
+        || die "failed to download NPU driver: $DRIVER_URL (if the file is missing, the package's Debian revision may no longer be -2)"
     log "Downloading dx_rt (${RT_VER}, ${ARCH})"
     curl -fL "$RT_URL" -o "$WORK/dxrt.deb" \
         || die "failed to download dx_rt: $RT_URL"
     log "Downloading firmware (${FW_VER})"
-    curl -fL "$RAW/dx_fw/main/m1/${FW_VER}/mdot2/fw.bin"      -o "$WORK/fw_m1.bin"
-    curl -fL "$RAW/dx_fw/main/m1m/${FW_M1M_VER}/mdot2/fw.bin" -o "$WORK/fw_m1m.bin"
-    curl -fL "$RAW/dx_fw/main/m1/${FW_VER}/h1/fw.bin"         -o "$WORK/fw_h1.bin"
+    curl -fL "$RAW/dx_fw/main/m1/${FW_VER}/mdot2/fw.bin"      -o "$WORK/fw_m1.bin" \
+        || die "failed to download M1 firmware ${FW_VER}"
+    curl -fL "$RAW/dx_fw/main/m1m/${FW_M1M_VER}/mdot2/fw.bin" -o "$WORK/fw_m1m.bin" \
+        || die "failed to download M1M firmware ${FW_M1M_VER}"
+    curl -fL "$RAW/dx_fw/main/m1/${FW_VER}/h1/fw.bin"         -o "$WORK/fw_h1.bin" \
+        || die "failed to download H1 firmware ${FW_VER}"
     chmod 644 "$WORK"/*.deb
 
     log "Installing NPU driver (DKMS package)"
+    # Non-fatal: the debs are already downloaded and installed by path, so a
+    # stale or unreachable index only matters for resolving their dependencies,
+    # and apt reports that itself on the install line below.
     $SUDO apt-get update -qq || true
     $SUDO apt-get install -y "$WORK/driver.deb"
     log "Installing dx_rt (libdxrt-bin)"

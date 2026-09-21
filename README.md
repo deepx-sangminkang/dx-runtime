@@ -58,7 +58,9 @@ curl -fsSL https://raw.githubusercontent.com/DEEPX-AI/dx-runtime/main/oneline-in
 This installs `dx_rt_npu_linux_driver`, `dx_rt`, and `dx_fw` from the prebuilt binaries on each component's `main` branch, so it always tracks the newest published build. It does **not** cover `dx_app` or `dx_stream` — for those, use the Local or Docker Installation above.
 
 Pin a component instead of tracking `main` with `DX_RT_VERSION`, `DX_DRIVER_VERSION`, or
-`DX_FW_VERSION`, e.g. `curl -fsSL ... | DX_RT_VERSION=3.4.0 sh`. Because the versions are
+`DX_FW_VERSION`, e.g. `curl -fsSL ... | DX_RT_VERSION=3.4.0 sh`. `DX_FW_VERSION` covers M1,
+M1M and H1 together — the three are released as one firmware set, and H1 ships inside the
+M1 version directory. Because the versions are
 resolved at run time, the artifacts are not checksum-verified, and the three components
 follow their own branches independently — a run between releases may install a combination
 that has not been validated together. Use the version pins or `install.sh` when you need a
