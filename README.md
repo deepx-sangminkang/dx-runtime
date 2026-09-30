@@ -68,6 +68,17 @@ known-good set.
 
 - If no NPU device is detected, the firmware update step is skipped with a warning; rerun the same command once the device is available.
 
+To remove it again without cloning the repository:
+```bash
+curl -fsSL https://raw.githubusercontent.com/DEEPX-AI/dx-runtime/main/oneline-uninstall.sh | sh
+```
+This purges the `dxrt-driver-dkms` and `libdxrt-bin` packages, which is what both install
+routes produce, so it removes an `install.sh` install just as well. Firmware already flashed
+to the device is not reverted — there is no uninstall path for it — and the `dx_engine` Python
+wheel is user-managed, so `libdxrt-bin` leaves it in place and prints how to remove it. For
+`dx_app` and `dx_stream`, which the one-liner never installs, use the repository's
+`uninstall.sh`.
+
 ---
 
 ## Create User Manual
