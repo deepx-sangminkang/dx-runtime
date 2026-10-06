@@ -43,10 +43,15 @@ You can install DX-Runtime by following the instructions at this [Link](https://
 
 ### APT Repository Installation
 
-The NPU driver and DX-RT are also published as Debian packages in the DEEPX APT repository (Ubuntu, `amd64` / `arm64`), so you can install and upgrade them with `apt`:
+The NPU driver and DX-RT are also published as Debian packages in the DEEPX APT repository (Ubuntu, `amd64` / `arm64`), so you can install and upgrade them with `apt`.
+
+Verify the signing key before trusting it: `gpg --show-keys` must print the fingerprint `3A20CC853C64AE328D0F58CFD816AAC6689DBDEA`. If it does not match, stop — do not install the key.
 
 ```bash
-wget -O - https://apt.releases.deepx.ai/gpg | sudo gpg --dearmor -o /usr/share/keyrings/deepx-archive-keyring.gpg
+wget -O deepx-archive-keyring.asc https://apt.releases.deepx.ai/gpg
+gpg --show-keys deepx-archive-keyring.asc   # fingerprint must be 3A20CC853C64AE328D0F58CFD816AAC6689DBDEA
+sudo gpg --dearmor -o /usr/share/keyrings/deepx-archive-keyring.gpg deepx-archive-keyring.asc
+rm deepx-archive-keyring.asc
 
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/deepx-archive-keyring.gpg] https://apt.releases.deepx.ai $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/deepx.list
 
