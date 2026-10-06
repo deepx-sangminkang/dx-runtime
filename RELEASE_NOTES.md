@@ -24,10 +24,9 @@ Here are the **DX-Runtime v2.5.0** Release Notes for each module.
 - `oneline-install.sh`: one-line runtime-only install (NPU driver, dx_rt, dx_fw) without cloning the repository — `curl -fsSL https://raw.githubusercontent.com/DEEPX-AI/dx-runtime/main/oneline-install.sh | sh`
     - Installs the newest published build of each component by default; pin with `DX_RT_VERSION`, `DX_DRIVER_VERSION`, `DX_FW_VERSION` (`DX_FW_VERSION` pins M1, M1M and H1 together)
     - Skips the firmware update with a warning when no NPU device is detected
-    - Does not cover `dx_app` / `dx_stream`; artifacts are not checksum-verified, so use the version pins or `install.sh` for a validated set
+    - Does not cover `dx_app` / `dx_stream`
+    - **Note:** downloaded artifacts are **not checksum-verified**, and each component tracks its own `main` branch, so a run between releases may install an unvalidated combination. Use the version pins or `install.sh` when you need a known-good set
 - `oneline-uninstall.sh`: purges `dxrt-driver-dkms` and `libdxrt-bin`, which removes both one-line and `install.sh` installs. Flashed firmware and the `dx_engine` Python wheel are left in place
-- Installation guide for the DEEPX apt repository (`https://apt.releases.deepx.ai`): install `dxrt-driver-dkms` and `libdxrt-bin` with `apt install`
-- Prebuilt dx-runtime container images on GHCR: `ghcr.io/deepx-ai/dx-runtime` (`rt`, `rt-app`, `rt-stream`, `rt-app-stream`; `linux/amd64`, `linux/arm64`)
 
 ---
 
