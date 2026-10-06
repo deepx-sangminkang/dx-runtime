@@ -56,14 +56,14 @@ sudo apt install libdxrt-bin        # DX-RT library, dxrt-cli and tools
 ```
 
 - `libdxrt-bin` stages the `dx_engine` Python wheels in `/usr/share/libdxrt-bin/python` but does not install them — pip-install the one matching your Python (the post-install message prints the exact command).
-- Firmware is not part of these packages; update it with `./install.sh --target=dx_fw`, and reboot after installing the driver.
+- Firmware is not part of these packages; update it by running `./install.sh --target=dx_fw` from the dx-runtime root. A reboot after installing the driver is recommended.
 - `dx_app` and `dx_stream` are not covered by this route; use the Local Installation guide for them.
 
 See the [APT Repository Install](https://github.com/DEEPX-AI/dx-all-suite/blob/main/docs/source/02_Setting_Up_Environment.md#apt-repository-install-dx-runtime) section for details.
 
 ### Docker Installation
 
-DX-Runtime support installation in docker envirionments.
+DX-Runtime supports installation in docker environments.
 
 You can install DX-Runtime by following the instructions at this [Link](https://github.com/DEEPX-AI/dx-all-suite/blob/main/docs/source/02_Setting_Up_Environment.md#docker-installation) 
 
