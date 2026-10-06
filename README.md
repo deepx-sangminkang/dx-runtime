@@ -41,6 +41,26 @@ DX-Runtime supports installation in local environments.
 
 You can install DX-Runtime by following the instructions at this [Link](https://github.com/DEEPX-AI/dx-all-suite/blob/main/docs/source/02_Setting_Up_Environment.md#dx-runtime-installation-rt-driver-fw-app-stream)
 
+### APT Repository Installation
+
+The NPU driver and DX-RT are also published as Debian packages in the DEEPX APT repository (Ubuntu, `amd64` / `arm64`), so you can install and upgrade them with `apt`:
+
+```bash
+wget -O - https://apt.releases.deepx.ai/gpg | sudo gpg --dearmor -o /usr/share/keyrings/deepx-archive-keyring.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/deepx-archive-keyring.gpg] https://apt.releases.deepx.ai $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/deepx.list
+
+sudo apt update
+sudo apt install dxrt-driver-dkms   # NPU kernel driver, built for your kernel via DKMS
+sudo apt install libdxrt-bin        # DX-RT library, dxrt-cli and tools
+```
+
+- `libdxrt-bin` stages the `dx_engine` Python wheels in `/usr/share/libdxrt-bin/python` but does not install them — pip-install the one matching your Python (the post-install message prints the exact command).
+- Firmware is not part of these packages; update it with `./install.sh --target=dx_fw`, and reboot after installing the driver.
+- `dx_app` and `dx_stream` are not covered by this route; use the Local Installation guide for them.
+
+See the [APT Repository Install](https://github.com/DEEPX-AI/dx-all-suite/blob/main/docs/source/02_Setting_Up_Environment.md#apt-repository-install-dx-runtime) section for details.
+
 ### Docker Installation
 
 DX-Runtime support installation in docker envirionments.
